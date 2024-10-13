@@ -12,9 +12,9 @@ class LLM:
 
     def generate_for_ocr(self, input_text, prompt):
         system_message = """
-        Act like an expert in assistive technology, specializing in providing descriptions for visually impaired individuals. 
-        Your task is to ensure that every piece of text is transformed into a comprehensive, easy-to-understand narrative, 
-        focusing on the main ideas while ignoring irrelevant characters or symbols.
+        You are a model that assists visually impaired users by interpreting and describing text recognized through Optical Character Recognition (OCR). 
+        Your goal is to extract the essential information from the text, ignoring any random characters or irrelevant symbols, 
+        and present it in a clear and concise manner.
         """
 
         user_message = f"""
@@ -47,6 +47,12 @@ class LLM:
         return response_text
 
     def get_object_of_interest(self, data, prompt):
+        system_message = """
+        You are a model that specializes in object recognition and semantic segmentation analysis. 
+        You help users by analyzing identified objects and their respective areas, 
+        and you prioritize objects with the largest area when multiple matches exist.
+        """
+
         message_content = f"""
         You are the interface for a vision-language model designed to analyze objects from a semantic segmentation model.
         The model provides data on identified objects and their areas as follows:
@@ -61,41 +67,55 @@ class LLM:
 
         Take a deep breath and work on this problem step-by-step.
         """
+
         chat_completion = self.client.chat.completions.create(
-            messages=[{"role": "user", "content": message_content}],
+            messages=[
+                {"role": "system", "content": system_message},
+                {"role": "user", "content": message_content},
+            ],
             model="llama-3.1-70b-versatile",
         )
+
         response_text = chat_completion.choices[0].message.content
         print(response_text)
         return response_text
 
     def decision(self, text, history_questions, history_answers):
+        system_message = """
+        You are an intelligent system designed to understand user queries and decide the appropriate method to answer. 
+        Based on whether the query involves text extraction (OCR), general image analysis (VQA), or previous user interactions, 
+        you must provide a quick and accurate decision without explanation, just like an efficient assistant.
+        """
+
         prompt = text
         message_content = f"""
-            You are the interface for a vision-language model. Based on the user's query, you must decide the correct course of action from the following options:
+        You are the interface for a vision-language model. Based on the user's query, you must decide the correct course of action from the following options:
 
-            1. **Say "0"** if the question requires OCR (Optical Character Recognition), which is used to read specific text from an image.
-            2. **Say "1"** if the question requires the VQA (Visual Question Answering) model to analyze and describe general visual information in an image.
-            3. If the user's query can be answered using previously asked questions and answers, respond with the answer directly. 
-            - You have access to two arrays: one containing the last 5 questions and the other containing the last 5 answers.
-            - If the user explicitly asks to use previous information or if the query matches past interactions, respond directly with the relevant answer without saying "2."
+        1. **Say "0"** if the question requires OCR (Optical Character Recognition), which is used to read specific text from an image.
+        2. **Say "1"** if the question requires the VQA (Visual Question Answering) model to analyze and describe general visual information in an image.
+        3. If the user's query can be answered using previously asked questions and answers, respond with the answer directly. 
+        - You have access to two arrays: one containing the last 5 questions and the other containing the last 5 answers.
+        - If the user explicitly asks to use previous information or if the query matches past interactions, respond directly with the relevant answer without saying "2."
 
-            **Guidelines to follow:**
-            - **Use "0"** when the query involves reading or extracting specific text from an image (OCR).
-            - **Use "1"** when the query asks about general visual content or image-based analysis (VQA).
-            - For matching questions in the previous data, return the stored answer directly.
+        **Guidelines to follow:**
+        - **Use "0"** when the query involves reading or extracting specific text from an image (OCR).
+        - **Use "1"** when the query asks about general visual content or image-based analysis (VQA).
+        - For matching questions in the previous data, return the stored answer directly.
 
-            Previous interactions:
-            - Last 5 questions: {history_questions}
-            - Last 5 answers: {history_answers}
+        Previous interactions:
+        - Last 5 questions: {history_questions}
+        - Last 5 answers: {history_answers}
 
-            User query: "{prompt}"
+        User query: "{prompt}"
 
-            Dont give explanation, just give an answer like an actual person.
-            """
+        Don't give explanation, just give an answer like an actual person.
+        """
 
         chat_completion = self.client.chat.completions.create(
-            messages=[{"role": "user", "content": message_content}],
+            messages=[
+                {"role": "system", "content": system_message},
+                {"role": "user", "content": message_content},
+            ],
             model="llama-3.1-70b-versatile",
         )
 
