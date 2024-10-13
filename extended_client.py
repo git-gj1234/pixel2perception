@@ -1,45 +1,37 @@
-import cv2
-import speech_recognition as sr
-import pyttsx3
-import subprocess
-import time
-import threading
 import os
-import matplotlib.pyplot as plt
-from PIL import Image, ImageTk
+import cv2
+import random
+import threading
 import tkinter as tk
 from tkinter import Label, Button
+from PIL import Image, ImageTk
 import easyocr
-import numpy as np
+import speech_recognition as sr
+import pyttsx3
 from transformers import pipeline
-import random
 from Prompts import LLM
+from dotenv import load_dotenv
+import numpy as np
 
+load_dotenv()
 llm = LLM()
-
 history_questions = ["", "", "", "", ""]
 history_answers = ["", "", "", "", ""]
-
 pipe = pipeline("image-segmentation", model="badmatr11x/semantic-image-segmentation")
 print("OCR model loaded")
+reader = easyocr.Reader(["en"], gpu=True)
 
 
 def recognize_text(image):
-    reader = easyocr.Reader(["en"], gpu=True)
     text_detections = reader.readtext(image)
     recognized_texts = []
-
     if text_detections:
         for bbox, text, score in text_detections:
             if score > 0.25:
                 recognized_texts.append(text)
     else:
         print("No text detected")
-
-    if recognized_texts:
-        return ", ".join(recognized_texts)
-    else:
-        return "No text detected"
+    return ", ".join(recognized_texts) if recognized_texts else "No text detected"
 
 
 def get_random_color():
@@ -52,41 +44,35 @@ def get_largest_contour(binary_mask):
     contours, _ = cv2.findContours(
         cleaned_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
     )
-    if not contours:
-        return None
-    return max(contours, key=cv2.contourArea)
+    return max(contours, key=cv2.contourArea) if contours else None
 
 
 def return_bounding_boxes_labels(image):
     image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
     results = pipe(r"captured_image.jpg")
     overlay = np.zeros_like(image_rgb)
-
     min_area_threshold = 1000
-
     bounding_boxes = []
     labels = []
-
     for result in results:
         mask = result["mask"]
         label = result["label"]
         color = get_random_color()
-        mask = np.array(mask)
         binary_mask = np.where(mask > 0, 1, 0).astype(np.uint8)
         largest_contour = get_largest_contour(binary_mask)
-        if largest_contour is not None:
-            if cv2.contourArea(largest_contour) >= min_area_threshold:
-                colored_mask = np.zeros_like(image_rgb)
-                cv2.drawContours(
-                    colored_mask, [largest_contour], -1, color, thickness=cv2.FILLED
-                )
-                overlay = cv2.addWeighted(overlay, 1, colored_mask, 0.5, 0)
-                x, y, w, h = cv2.boundingRect(largest_contour)
-                bounding_boxes.append((x, y, w, h))
-                labels.append(label)
-
+        if (
+            largest_contour is not None
+            and cv2.contourArea(largest_contour) >= min_area_threshold
+        ):
+            colored_mask = np.zeros_like(image_rgb)
+            cv2.drawContours(
+                colored_mask, [largest_contour], -1, color, thickness=cv2.FILLED
+            )
+            overlay = cv2.addWeighted(overlay, 1, colored_mask, 0.5, 0)
+            x, y, w, h = cv2.boundingRect(largest_contour)
+            bounding_boxes.append((x, y, w, h))
+            labels.append(label)
     combined = cv2.addWeighted(image_rgb, 0.2, overlay, 0.8, 0)
-
     for (x, y, w, h), label in zip(bounding_boxes, labels):
         cv2.rectangle(combined, (x, y), (x + w, y + h), (0, 0, 0), 2)
         cv2.putText(
@@ -100,14 +86,19 @@ def return_bounding_boxes_labels(image):
 
 def ocr_funct(prompt, imghat):
     output_string, bounding_boxes, labels = return_bounding_boxes_labels(imghat)
-    index = llm.get_object_of_intrest(output_string, prompt)
-    index = index.lower()
-    i = labels.index(index)
-    (x, y, w, h) = bounding_boxes[i]
-    imghat = imghat[x : x + w, y : y + h]
-    final_ocr = recognize_text(imghat)
-    print("ITS WRITTEN :", final_ocr)
-    return final_ocr
+    index = llm.get_object_of_interest(output_string, prompt).lower()
+    if index in labels:
+        i = labels.index(index)
+        (x, y, w, h) = bounding_boxes[i]
+        imghat = imghat[y : y + h, x : x + w]
+        final_ocr = recognize_text(imghat)
+        print("ITS WRITTEN :", final_ocr)
+        return final_ocr
+    return "Object not found."
+
+
+def function_model(image, text, lbl_output):
+    return "TESTING"
 
 
 def decision_gen(frame, text, lbl_output, history_questions, history_answers):
@@ -115,9 +106,8 @@ def decision_gen(frame, text, lbl_output, history_questions, history_answers):
     val = llm.decision(text, history_questions, history_answers)
     ques = text
     if val == "0":
-        image = cv2.imread(
-            r"C:\Users\adith\Documents\bmsce\3rd year\6th SEM\mini project\eye for the blind client\captured_image.jpg"
-        )
+        print("OCR")
+        image = cv2.imread(r"captured_image.jpg")
         val2 = ocr_funct(prompt, image)
         val3 = llm.generate_for_ocr(val2, {"Whats on the menu? Give a summary"})
         history_questions.pop(0)
@@ -125,13 +115,14 @@ def decision_gen(frame, text, lbl_output, history_questions, history_answers):
         history_questions.append(ques)
         history_answers.append(val3)
     elif len(val) > 2:
-        print(val)
+        print("History")
         history_questions.pop(0)
         history_answers.pop(0)
         history_questions.append(ques)
         history_answers.append(val)
     else:
-        val2 = llm.function_model(frame, text, lbl_output)
+        print("VQA")
+        val2 = function_model(frame, text, lbl_output)
         history_questions.pop(0)
         history_answers.pop(0)
         history_questions.append(ques)
@@ -142,39 +133,29 @@ def decision_gen(frame, text, lbl_output, history_questions, history_answers):
 def speech_to_text(lbl_output):
     recognizer = sr.Recognizer()
     with sr.Microphone() as source:
-        recognizer.adjust_for_ambient_noise(source, duration=1)
-        lbl_output.config(text="Can you describe the appetizer section")
-        audio = recognizer.listen(source)
-    # print(1)
-    try:
+        lbl_output.config(text="Ambient Noise Removal...")
+        recognizer.adjust_for_ambient_noise(source)
         lbl_output.config(text="Recording...")
+        audio = recognizer.listen(source)
+    try:
+        lbl_output.config(text="Recognising...")
         text = recognizer.recognize_google(audio, language="en-US")
     except sr.UnknownValueError:
-        lbl_output.config(text="Google Web Speech API could not understand the audio")
+        lbl_output.config(text="Could not understand audio")
         text = ""
     except sr.RequestError as e:
-        lbl_output.config(
-            text=f"Could not request results from Google Web Speech API; {e}"
-        )
+        lbl_output.config(text=f"Error: {e}")
         text = ""
-    # print(text)
     return text
 
 
 def text_to_speech(text, voice_name="David", lbl_output=None):
     engine = pyttsx3.init()
     voices = engine.getProperty("voices")
-    voice_id = None
-    for voice in voices:
-        if voice_name.lower() in voice.name.lower():
-            voice_id = voice.id
-            break
-    if voice_id is None:
-        default_message = f"Voice '{voice_name}' not found. Using default voice."
-        print(default_message)
-        if lbl_output:
-            lbl_output.config(text=default_message)
-        voice_id = voices[0].id
+    voice_id = next(
+        (voice.id for voice in voices if voice_name.lower() in voice.name.lower()),
+        voices[0].id,
+    )
     engine.setProperty("voice", voice_id)
     engine.setProperty("rate", 150)
     engine.setProperty("volume", 1)
@@ -195,7 +176,6 @@ def update_frame():
 
 
 def capture_image():
-    global lbl_output
     capture_thread = threading.Thread(target=capture_image_thread)
     capture_thread.start()
 
@@ -241,6 +221,9 @@ button_width = 15
 button_height = 2
 
 cap = cv2.VideoCapture(1, cv2.CAP_DSHOW)
+if not cap.isOpened():
+    print("Error: Could not open video.")
+    quit()
 
 root = tk.Tk()
 root.title("Pixel2Perception")
@@ -249,37 +232,42 @@ root.geometry("800x800")
 frame_title = tk.Frame(root, bg=background_color)
 frame_title.pack(pady=(20, 10), fill=tk.X)
 
-img = Image.open("blind.png")
-img = img.resize((50, 50), Image.ANTIALIAS)
+img = Image.open("blind.png").resize((50, 50), Image.ANTIALIAS)
 img = ImageTk.PhotoImage(img)
 
 lbl_image = Label(frame_title, image=img, bg=background_color)
-lbl_image.image = img
-lbl_image.grid(row=0, column=0, padx=(5, 5))
+lbl_image.pack(side=tk.LEFT)
 
-lbl_title = Label(
+title_label = Label(
     frame_title,
     text="Pixel2Perception",
-    font=("LuckiestGuy", 20, "bold"),
-    anchor="center",
-    fg=text_color,
     bg=background_color,
+    fg=text_color,
+    font=("Helvetica", 20),
 )
-lbl_title.grid(row=0, column=1)
-lbl = Label(root)
-lbl.pack()
-btn_capture = Button(
-    root,
-    text="Ask",
-    command=capture_image,
-    width=button_width,
-    height=button_height,
-    **button_style,
-)
-btn_capture.pack(pady=20)
-lbl_output = Label(root, text="", fg=text_color)
-lbl_output.pack(pady=10)
-update_thread = threading.Thread(target=update_frame)
-update_thread.start()
+title_label.pack(side=tk.LEFT, padx=10)
 
+frame_video = tk.Frame(root)
+frame_video.pack()
+
+lbl = Label(frame_video)
+lbl.pack()
+
+frame_buttons = tk.Frame(root, bg=background_color)
+frame_buttons.pack(pady=20)
+
+capture_button = Button(
+    frame_buttons, text="Capture", command=capture_image, **button_style
+)
+capture_button.pack(side=tk.LEFT, padx=(0, 10))
+
+quit_button = Button(frame_buttons, text="Quit", command=quit_app, **button_style)
+quit_button.pack(side=tk.LEFT)
+
+lbl_output = Label(
+    root, text="", bg=background_color, fg=text_color, font=("Helvetica", 12)
+)
+lbl_output.pack(pady=(20, 0))
+
+update_frame()
 root.mainloop()
