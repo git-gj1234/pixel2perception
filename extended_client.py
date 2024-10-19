@@ -12,9 +12,11 @@ from transformers import pipeline
 from Prompts import LLM
 from dotenv import load_dotenv
 import numpy as np
+from Barcode import BarcodeProcessor
 
 load_dotenv()
 llm = LLM()
+barcode = BarcodeProcessor()
 history_questions = ["", "", "", "", ""]
 history_answers = ["", "", "", "", ""]
 pipe = pipeline("image-segmentation", model="badmatr11x/semantic-image-segmentation")
@@ -101,32 +103,50 @@ def function_model(image, text, lbl_output):
     return "TESTING"
 
 
+def bar_code(frame, text):
+    reply = ""
+    barcode.decode(frame)
+    barcode.lookup()
+    reply = barcode.barcode_llm(text)
+    return reply
+
+
 def decision_gen(frame, text, lbl_output, history_questions, history_answers):
     prompt = text
-    val = llm.decision(text, history_questions, history_answers)
+    val = str(llm.decision(text, history_questions, history_answers))
+    print(val)
     ques = text
-    if val == "0":
+    if "0" in val:
         print("OCR")
         image = cv2.imread(r"captured_image.jpg")
         val2 = ocr_funct(prompt, image)
-        val3 = llm.generate_for_ocr(val2, {"Whats on the menu? Give a summary"})
+        val3 = llm.generate_for_ocr(val2, prompt)
         history_questions.pop(0)
         history_answers.pop(0)
         history_questions.append(ques)
         history_answers.append(val3)
-    elif len(val) > 2:
-        print("History")
-        history_questions.pop(0)
-        history_answers.pop(0)
-        history_questions.append(ques)
-        history_answers.append(val)
-    else:
+    elif "1" in val:
         print("VQA")
         val2 = function_model(frame, text, lbl_output)
         history_questions.pop(0)
         history_answers.pop(0)
         history_questions.append(ques)
         history_answers.append(val2)
+    elif "2" in val:
+        pass
+    elif "3" in val:
+        print("Barcode")
+        val2 = bar_code(frame, text)
+        history_questions.pop(0)
+        history_answers.pop(0)
+        history_questions.append(ques)
+        history_answers.append(val2)
+    else:
+        print("History")
+        history_questions.pop(0)
+        history_answers.pop(0)
+        history_questions.append(ques)
+        history_answers.append(val)
     return str(history_answers[-1])
 
 
