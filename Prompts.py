@@ -11,6 +11,7 @@ class LLM:
         self.client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
 
     def generate_for_ocr(self, input_text, prompt):
+        print("PREDICTED : ", input_text)
         system_message = """
         You are a model that assists visually impaired users by interpreting and describing text recognized through Optical Character Recognition (OCR). 
         Your goal is to extract the essential information from the text, ignoring any random characters or irrelevant symbols, 
@@ -32,6 +33,8 @@ class LLM:
 
         Additionally, answer the following question using the provided text:
         "{prompt}"
+
+        Just answer me realteted to the aksed question, dont give other information.
         """
 
         chat_completion = self.client.chat.completions.create(

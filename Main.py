@@ -8,7 +8,9 @@ from PIL import Image, ImageTk
 import easyocr
 import pyttsx3
 from transformers import pipeline
-from googletrans import Translator
+
+# from googletrans import Translator
+from ObjectLocation import ObjectDetectionAssistant
 from Prompts import LLM
 from dotenv import load_dotenv
 import numpy as np
@@ -19,7 +21,8 @@ from client_server_connector import send_image_and_text
 from gtts import gTTS
 from playsound import playsound
 import speech_recognition as sr
-from googletrans import Translator
+
+# from googletrans import Translator
 
 load_dotenv()
 llm = LLM()
@@ -31,14 +34,9 @@ print("OCR model loaded")
 reader = easyocr.Reader(["en"], gpu=True)
 
 recognizer = sr.Recognizer()
-translator = Translator()
+# translator = Translator()
 
-language_map = {
-    'hi': 'hi',  
-    'en': 'en',  
-    'es': 'es',  
-    'kn':'kn'
-}
+language_map = {"hi": "hi", "en": "en", "es": "es", "kn": "kn"}
 
 
 def recognize_text(image):
@@ -67,53 +65,66 @@ def get_largest_contour(binary_mask):
 
 
 def return_bounding_boxes_labels(image):
-    image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-    results = pipe(r"captured_image.jpg")
+    image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)  # Convert to RGB
+    results = pipe(r"captured_image.jpg")  # Run your detection model on the image
     overlay = np.zeros_like(image_rgb)
-    min_area_threshold = 1000
+    min_area_threshold = 1000  # Minimum contour area to consider
     bounding_boxes = []
     labels = []
+
     for result in results:
         mask = result["mask"]
-        label = result["label"]
-        color = get_random_color()
-        binary_mask = np.where(mask > 0, 1, 0).astype(np.uint8)
-        largest_contour = get_largest_contour(binary_mask)
-        if (
-            largest_contour is not None
-            and cv2.contourArea(largest_contour) >= min_area_threshold
-        ):
-            colored_mask = np.zeros_like(image_rgb)
-            cv2.drawContours(
-                colored_mask, [largest_contour], -1, color, thickness=cv2.FILLED
-            )
-            overlay = cv2.addWeighted(overlay, 1, colored_mask, 0.5, 0)
-            x, y, w, h = cv2.boundingRect(largest_contour)
-            bounding_boxes.append((x, y, w, h))
-            labels.append(label)
+
+        # Ensure the mask is a NumPy array
+        if isinstance(mask, Image.Image):  # If it's a PIL Image, convert to NumPy array
+            mask = np.array(mask)
+
+        if isinstance(mask, np.ndarray):  # Proceed only if mask is a NumPy array
+            binary_mask = np.where(mask > 0, 1, 0).astype(np.uint8)  # Binary mask
+            largest_contour = get_largest_contour(binary_mask)
+
+            # Check if the contour area meets the threshold
+            if (
+                largest_contour is not None
+                and cv2.contourArea(largest_contour) >= min_area_threshold
+            ):
+                label = result["label"]
+                color = get_random_color()  # Define random color for the mask
+
+                # Create colored overlay with the mask
+                colored_mask = np.zeros_like(image_rgb)
+                cv2.drawContours(
+                    colored_mask, [largest_contour], -1, color, thickness=cv2.FILLED
+                )
+                overlay = cv2.addWeighted(overlay, 1, colored_mask, 0.5, 0)
+
+                # Get bounding box for the largest contour
+                x, y, w, h = cv2.boundingRect(largest_contour)
+                bounding_boxes.append((x, y, w, h))
+                labels.append(label)
+
+    # Combine overlay with the original image
     combined = cv2.addWeighted(image_rgb, 0.2, overlay, 0.8, 0)
+
+    # Draw bounding boxes and labels on the image
     for (x, y, w, h), label in zip(bounding_boxes, labels):
         cv2.rectangle(combined, (x, y), (x + w, y + h), (0, 0, 0), 2)
         cv2.putText(
             combined, label, (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 0, 0), 2
         )
+
+    # Create output string describing the detected objects
     output_string = ", ".join(
         [f"{label} area {w * h}" for (x, y, w, h), label in zip(bounding_boxes, labels)]
     )
+
     return output_string, bounding_boxes, labels
 
 
 def ocr_funct(prompt, imghat):
-    output_string, bounding_boxes, labels = return_bounding_boxes_labels(imghat)
-    index = llm.get_object_of_interest(output_string, prompt).lower()
-    if index in labels:
-        i = labels.index(index)
-        (x, y, w, h) = bounding_boxes[i]
-        imghat = imghat[y : y + h, x : x + w]
-        final_ocr = recognize_text(imghat)
-        print("ITS WRITTEN :", final_ocr)
-        return final_ocr
-    return "Object not found."
+    final_ocr = recognize_text(imghat)
+    print("ITS WRITTEN :", final_ocr)
+    return final_ocr
 
 
 def function_model(image, text):
@@ -130,6 +141,15 @@ def bar_code(frame, text):
     barcode.lookup()
     reply = barcode.barcode_llm(text)
     return reply
+
+
+def locate(img, prompt):
+    load_dotenv()
+    hf_api_key = os.getenv("HUGGINGFACE_API_KEY")
+    groq_api_key = os.getenv("GROQ_API_KEY")
+    assistant = ObjectDetectionAssistant(hf_api_key, groq_api_key)
+    result = assistant.assist_user(img, prompt)
+    return result
 
 
 def decision_gen(frame, text, lbl_output, history_questions, history_answers):
@@ -162,7 +182,12 @@ def decision_gen(frame, text, lbl_output, history_questions, history_answers):
         history_questions.append(ques)
         history_answers.append(val2)
     elif "2" in val:
-        pass
+        print("Locate")
+        val2 = locate(frame, text)
+        history_questions.pop(0)
+        history_answers.pop(0)
+        history_questions.append(ques)
+        history_answers.append(val2)
     elif "3" in val:
         print("Barcode")
         val2 = bar_code(frame, text)
@@ -180,45 +205,36 @@ def decision_gen(frame, text, lbl_output, history_questions, history_answers):
 
 
 def speech_to_text(lbl_output):
+    recognizer = sr.Recognizer()
+    with sr.Microphone() as source:
+        lbl_output.config(text="Ambient Noise Removal...")
+        recognizer.adjust_for_ambient_noise(source)
+        lbl_output.config(text="Recording...")
+        audio = recognizer.listen(source)
     try:
-        with sr.Microphone() as source:
-            lbl_output.config(text="Speak something...")
-            audio = recognizer.listen(source)
-
-        text = recognizer.recognize_google(audio)
-        lbl_output.config(text=f"Recognized speech: {text}")
-        print(f"Recognized speech: {text}")
-
-        detected_language = translator.detect(text).lang
-        print(f"Detected language: {detected_language}")
-
-        if detected_language == 'en':
-            lbl_output.config(text="Detected English, no translation needed.")
-            return text, detected_language
-        else:
-            simple_language_code = language_map.get(detected_language, detected_language)
-            translated_text = translator.translate(text, dest=simple_language_code)
-            print(f"Text in original script: {translated_text.text}")
-            return translated_text.text, detected_language
+        lbl_output.config(text="Recognising...")
+        text = recognizer.recognize_google(audio, language="en-US")
     except sr.UnknownValueError:
-        lbl_output.config(text="Sorry, could not understand the audio.")
+        lbl_output.config(text="Could not understand audio")
+        text = ""
     except sr.RequestError as e:
-        lbl_output.config(text=f"Request error: {e}")
-    except Exception as e:
-        lbl_output.config(text=f"An error occurred: {e}")
-    return "", ""
+        lbl_output.config(text=f"Error: {e}")
+        text = ""
+    return text
 
 
-def text_to_speech(text, language_code):
-    try:
-        tts = gTTS(text=text, lang=language_code, slow=False)
-        filename = "output.mp3"
-        tts.save(filename)
-        playsound(filename)
-        os.remove(filename)
-    except Exception as e:
-        print(f"An error occurred: {e}")
-
+def text_to_speech(text, voice_name="David", lbl_output=None):
+    engine = pyttsx3.init()
+    voices = engine.getProperty("voices")
+    voice_id = next(
+        (voice.id for voice in voices if voice_name.lower() in voice.name.lower()),
+        voices[0].id,
+    )
+    engine.setProperty("voice", voice_id)
+    engine.setProperty("rate", 150)
+    engine.setProperty("volume", 1)
+    engine.say(text)
+    engine.runAndWait()
 
 
 def update_frame():
@@ -244,19 +260,15 @@ def capture_image_thread():
     if ret:
         cv2.imwrite("captured_image.jpg", frame)
         lbl_output.config(text="Image captured!")
-        text, detected_language = speech_to_text(lbl_output)
+        text = speech_to_text(lbl_output)
+        lbl_output.config(text=f"You said: {text}")
+        text_to_speech(text=f"You said: {text}", lbl_output=lbl_output)
+        reply = decision_gen(
+            frame, text, lbl_output, history_questions, history_answers
+        )
+        lbl_output.config(text=f"Reply: {reply}")
 
-        if text:
-            lbl_output.config(text=f"You said: {text}")
-            text_to_speech(f"You said: {text}", 'en')
-
-            reply = decision_gen(frame, text, lbl_output, history_questions, history_answers)
-
-            translated_text = translator.translate(reply, dest='en')
-            lbl_output.config(text=f"Assistant: {translated_text.text}")
-
-            again_translate_text = translator.translate(translated_text.text, dest=detected_language)
-            text_to_speech(again_translate_text.text, detected_language)
+        text_to_speech(reply, lbl_output=lbl_output)
 
 
 def quit_app():
@@ -284,7 +296,7 @@ button_style = {
 button_width = 15
 button_height = 2
 
-cap = cv2.VideoCapture(1, cv2.CAP_DSHOW)
+cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
 if not cap.isOpened():
     print("Error: Could not open video.")
     quit()
@@ -296,7 +308,7 @@ root.geometry("800x800")
 frame_title = tk.Frame(root, bg=background_color)
 frame_title.pack(pady=(20, 10), fill=tk.X)
 
-img = Image.open("blind.png").resize((50, 50), Image.ANTIALIAS)
+img = Image.open("blind.png").resize((50, 50))
 img = ImageTk.PhotoImage(img)
 
 lbl_image = Label(frame_title, image=img, bg=background_color)

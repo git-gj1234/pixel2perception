@@ -4,6 +4,7 @@ from groq import Groq
 from dotenv import load_dotenv
 from PIL import Image
 import base64
+import io
 
 
 class ObjectDetectionAssistant:
@@ -20,12 +21,25 @@ class ObjectDetectionAssistant:
         self.headers = {"Authorization": f"Bearer {hf_api_key}"}
         self.client = Groq(api_key=groq_api_key)
 
-    def query_image(self, filename):
-        """Uploads an image to the YOLOS model and returns the detected objects."""
-        with open(filename, "rb") as f:
-            data = f.read()
+    def query_image(self, file):
+        """Uploads a NumPy ndarray image to the YOLO model and returns the detected objects."""
+        # Convert the NumPy ndarray to a PIL Image
+        img = Image.fromarray(file)
+
+        # Save the PIL Image to a bytes buffer
+        buffer = io.BytesIO()
+        img.save(
+            buffer, format="JPEG"
+        )  # You can change to "PNG" or other formats as needed
+        buffer.seek(0)
+
+        # Get the image data in bytes
+        data = buffer.read()
+
+        # Send the request to the YOLO API
         response = requests.post(self.api_url, headers=self.headers, data=data)
 
+        # Check for response errors
         if response.status_code != 200:
             raise Exception(f"Error: {response.status_code} - {response.text}")
 
@@ -114,7 +128,16 @@ class ObjectDetectionAssistant:
 
     def describe_image(self, image_path):
         """Use the Groq API to describe the image."""
-        base64_image = self.encode_image(image_path)
+        img = Image.fromarray(image_path)
+
+        # Save the PIL Image to a bytes buffer
+        buffer = io.BytesIO()
+        img.save(buffer, format="JPEG")  # You can use other formats if needed
+        buffer.seek(0)
+
+        # Read the byte data and encode it to base64
+        byte_data = buffer.read()
+        base64_image = base64.b64encode(byte_data).decode("utf-8")
         chat_completion = self.client.chat.completions.create(
             messages=[
                 {
@@ -130,19 +153,17 @@ class ObjectDetectionAssistant:
                     ],
                 }
             ],
-            model="llama-3.2-90b-vision-preview",
+            model="llama-3.2-11b-vision-preview",
         )
-
         return chat_completion.choices[0].message.content
 
     def assist_user(self, image_path, user_prompt):
         """Use the Groq API to assist the user with spatial guidance based on detected objects."""
         output = self.query_image(image_path)
-        img = Image.open(image_path)
-        img_width, img_height = img.size
+        img = image_path
+        img_width, img_height = img.shape[:2]
         detection_results = self.format_detection_results(output, img_width, img_height)
         desc = self.describe_image(image_path)
-
         system_prompt = """
 Act like an expert assistant specialized in guiding visually impaired users to locate objects in their environment. 
 You have extensive experience in using object detection data to provide spatially-aware, clear, and context-rich 
@@ -203,16 +224,16 @@ frustration. Use guiding phrases such as “It might help to adjust your camera 
         return chat_completion.choices[0].message.content
 
 
-# Example usage
-if __name__ == "__main__":
-    load_dotenv()
-    hf_api_key = os.getenv("HUGGINGFACE_API_KEY")
-    groq_api_key = os.getenv("GROQ_API_KEY")
+# # Example usage
+# if __name__ == "__main__":
+#     load_dotenv()
+#     hf_api_key = os.getenv("HUGGINGFACE_API_KEY")
+#     groq_api_key = os.getenv("GROQ_API_KEY")
 
-    assistant = ObjectDetectionAssistant(hf_api_key, groq_api_key)
+#     assistant = ObjectDetectionAssistant(hf_api_key, groq_api_key)
 
-    img_pth = "1.jpg"
-    user_query = "where are my books?"
+#     img_pth = "3.jpg"
+#     user_query = "Can you locate my bag?"
 
-    result = assistant.assist_user(img_pth, user_query)
-    print(result)
+#     result = assistant.assist_user(img_pth, user_query)
+#     print(result)
