@@ -58,6 +58,13 @@ Pixel2Perception is an innovative system designed to empower visually impaired u
 4. Run the backend server by executing the Jupyter notebook `server_code.ipynb`.
 5. Launch the main interface using `Main.py`.
 
+Note: Step 4 requires the use of a system with atleast 24gb of VRAM. Further, make sure the server and client are on the same network. If they arent, port forwarding must be allowed on the router or use a VPN. The server code requires additional dependencies (requirments.txt is also required) that can be installed by:
+```bash
+pip install transformers
+pip install bitsandbytes
+pip install accelerate
+```
+
 ---
 
 ## Future Work
