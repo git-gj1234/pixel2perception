@@ -1,4 +1,3 @@
-"""
 # Pixel2Perception
 
 Pixel2Perception is an innovative system designed to empower visually impaired users by helping them understand and navigate their environment through real-time image analysis and object detection. By leveraging cutting-edge AI technologies, the system provides spoken instructions about the location and arrangement of objects in the user's surroundings, offering valuable assistance in everyday tasks.
@@ -72,4 +71,3 @@ pip install accelerate
 - **Enhanced Object Recognition**: Integrate more advanced models to recognize a broader array of objects.
 - **Mobile Support**: Expand functionality to mobile platforms for portability.
 - **Real-Time Processing**: Optimize for faster image capture and analysis, providing real-time feedback.
-"""
