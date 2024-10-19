@@ -6,9 +6,9 @@ import tkinter as tk
 from tkinter import Label, Button
 from PIL import Image, ImageTk
 import easyocr
-import speech_recognition as sr
 import pyttsx3
 from transformers import pipeline
+from googletrans import Translator
 from Prompts import LLM
 from dotenv import load_dotenv
 import numpy as np
@@ -16,7 +16,10 @@ from Barcode import BarcodeProcessor
 import io
 import time
 from client_server_connector import send_image_and_text
-
+from gtts import gTTS
+from playsound import playsound
+import speech_recognition as sr
+from googletrans import Translator
 
 load_dotenv()
 llm = LLM()
@@ -26,6 +29,16 @@ history_answers = ["", "", "", "", ""]
 pipe = pipeline("image-segmentation", model="badmatr11x/semantic-image-segmentation")
 print("OCR model loaded")
 reader = easyocr.Reader(["en"], gpu=True)
+
+recognizer = sr.Recognizer()
+translator = Translator()
+
+language_map = {
+    'hi': 'hi',  
+    'en': 'en',  
+    'es': 'es',  
+    'kn':'kn'
+}
 
 
 def recognize_text(image):
@@ -167,36 +180,45 @@ def decision_gen(frame, text, lbl_output, history_questions, history_answers):
 
 
 def speech_to_text(lbl_output):
-    recognizer = sr.Recognizer()
-    with sr.Microphone() as source:
-        lbl_output.config(text="Ambient Noise Removal...")
-        recognizer.adjust_for_ambient_noise(source)
-        lbl_output.config(text="Recording...")
-        audio = recognizer.listen(source)
     try:
-        lbl_output.config(text="Recognising...")
-        text = recognizer.recognize_google(audio, language="en-US")
+        with sr.Microphone() as source:
+            lbl_output.config(text="Speak something...")
+            audio = recognizer.listen(source)
+
+        text = recognizer.recognize_google(audio)
+        lbl_output.config(text=f"Recognized speech: {text}")
+        print(f"Recognized speech: {text}")
+
+        detected_language = translator.detect(text).lang
+        print(f"Detected language: {detected_language}")
+
+        if detected_language == 'en':
+            lbl_output.config(text="Detected English, no translation needed.")
+            return text, detected_language
+        else:
+            simple_language_code = language_map.get(detected_language, detected_language)
+            translated_text = translator.translate(text, dest=simple_language_code)
+            print(f"Text in original script: {translated_text.text}")
+            return translated_text.text, detected_language
     except sr.UnknownValueError:
-        lbl_output.config(text="Could not understand audio")
-        text = ""
+        lbl_output.config(text="Sorry, could not understand the audio.")
     except sr.RequestError as e:
-        lbl_output.config(text=f"Error: {e}")
-        text = ""
-    return text
+        lbl_output.config(text=f"Request error: {e}")
+    except Exception as e:
+        lbl_output.config(text=f"An error occurred: {e}")
+    return "", ""
 
 
-def text_to_speech(text, voice_name="David", lbl_output=None):
-    engine = pyttsx3.init()
-    voices = engine.getProperty("voices")
-    voice_id = next(
-        (voice.id for voice in voices if voice_name.lower() in voice.name.lower()),
-        voices[0].id,
-    )
-    engine.setProperty("voice", voice_id)
-    engine.setProperty("rate", 150)
-    engine.setProperty("volume", 1)
-    engine.say(text)
-    engine.runAndWait()
+def text_to_speech(text, language_code):
+    try:
+        tts = gTTS(text=text, lang=language_code, slow=False)
+        filename = "output.mp3"
+        tts.save(filename)
+        playsound(filename)
+        os.remove(filename)
+    except Exception as e:
+        print(f"An error occurred: {e}")
+
 
 
 def update_frame():
@@ -222,13 +244,19 @@ def capture_image_thread():
     if ret:
         cv2.imwrite("captured_image.jpg", frame)
         lbl_output.config(text="Image captured!")
-        text = speech_to_text(lbl_output)
-        lbl_output.config(text=f"You said: {text}")
-        text_to_speech(text=f"You said: {text}", lbl_output=lbl_output)
-        reply = decision_gen(
-            frame, text, lbl_output, history_questions, history_answers
-        )
-        text_to_speech(reply, lbl_output=lbl_output)
+        text, detected_language = speech_to_text(lbl_output)
+
+        if text:
+            lbl_output.config(text=f"You said: {text}")
+            text_to_speech(f"You said: {text}", 'en')
+
+            reply = decision_gen(frame, text, lbl_output, history_questions, history_answers)
+
+            translated_text = translator.translate(reply, dest='en')
+            lbl_output.config(text=f"Assistant: {translated_text.text}")
+
+            again_translate_text = translator.translate(translated_text.text, dest=detected_language)
+            text_to_speech(again_translate_text.text, detected_language)
 
 
 def quit_app():
