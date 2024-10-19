@@ -83,8 +83,8 @@ class LLM:
     def decision(self, text, history_questions, history_answers):
         system_message = """
         You are an intelligent system designed to understand user queries and decide the appropriate method to answer. 
-        Based on whether the query involves text extraction (OCR), general image analysis (VQA), or previous user interactions, 
-        you must provide a quick and accurate decision without explanation, just like an efficient assistant.
+        Based on whether the query involves text extraction (OCR), general image analysis (VQA), object location, barcode scanning, 
+        or previous user interactions, you must provide a quick and accurate decision without explanation, just like an efficient assistant.
         """
 
         prompt = text
@@ -93,13 +93,17 @@ class LLM:
 
         1. **Say "0"** if the question requires OCR (Optical Character Recognition), which is used to read specific text from an image.
         2. **Say "1"** if the question requires the VQA (Visual Question Answering) model to analyze and describe general visual information in an image.
-        3. If the user's query can be answered using previously asked questions and answers, respond with the answer directly. 
+        3. **Say "2"** if the question requires locating an object in a room (e.g., finding specific items like a bottle, keys, etc.).
+        4. **Say "3"** if the question requires scanning a barcode to retrieve product details.
+        5. If the user's query can be answered using previous interactions, respond with the answer directly.
         - You have access to two arrays: one containing the last 5 questions and the other containing the last 5 answers.
-        - If the user explicitly asks to use previous information or if the query matches past interactions, respond directly with the relevant answer without saying "2."
+        - If the user explicitly asks to use previous information or if the query matches past interactions, respond directly with the relevant answer without saying "4."
 
         **Guidelines to follow:**
         - **Use "0"** when the query involves reading or extracting specific text from an image (OCR).
         - **Use "1"** when the query asks about general visual content or image-based analysis (VQA).
+        - **Use "2"** when the query involves locating an object in a room.
+        - **Use "3"** when the query involves scanning a barcode for product information.
         - For matching questions in the previous data, return the stored answer directly.
 
         Previous interactions:
