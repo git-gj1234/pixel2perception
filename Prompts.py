@@ -82,33 +82,40 @@ class LLM:
 
     def decision(self, text, history_questions, history_answers):
         system_message = """
-        You are an intelligent system designed to understand user queries and decide the appropriate method to answer. 
-        Based on whether the query involves text extraction (OCR), general image analysis (VQA), object location, barcode scanning, 
-        or previous user interactions, you must provide a quick and accurate decision without explanation, just like an efficient assistant.
+        Your objective is to identify the type of processing needed for each query, 
+        selecting between OCR (Optical Character Recognition), general visual analysis 
+        (VQA), object location, barcode scanning, or referencing previous user interactions. 
+        You will choose the correct method based on these guidelines:
+
+        Guidelines:
+        - Say "0" if the query requires OCR, for example when the task involves reading or 
+        extracting specific text from an image.
+        - Say "1" if the query involves general image analysis using a VQA (Visual Question Answering)
+          model to describe or interpret the content of an image.
+        - Say "2" if the query involves locating an object within a room or environment, 
+        such as identifying the position of specific items like a bottle, keys, or furniture.
+        - Say "3" if the task involves scanning a barcode and retrieving related product details.
+        - If the user query can be answered using previous interactions, you must respond 
+        directly with the stored answer without saying "4." You have access to an array containing the last 5 questions and their corresponding answers:
+            -Last 5 questions: {history_questions}
+            -Last 5 answers: {history_answers}
+        If the current question matches any of the previous ones or the user explicitly 
+        refers to past interactions, retrieve and return the relevant answer immediately.
+        
+        Step-by-Step Decision Process:
+        - Classify the user query based on the type of visual processing needed (OCR, VQA,
+          object detection, barcode scanning, or history-based answer retrieval).
+        - Select the appropriate response method (from 0 to 3) based on the guidelines above.
+        - Respond quickly and accurately without providing unnecessary details, unless the 
+        query can be matched with previous history, in which case provide the relevant answer from stored responses.
+        
+        Take a deep breath and work on this problem step-by-step.
+
         """
 
         prompt = text
         message_content = f"""
         You are the interface for a vision-language model. Based on the user's query, you must decide the correct course of action from the following options:
-
-        1. **Say "0"** if the question requires OCR (Optical Character Recognition), which is used to read specific text from an image.
-        2. **Say "1"** if the question requires the VQA (Visual Question Answering) model to analyze and describe general visual information in an image.
-        3. **Say "2"** if the question requires locating an object in a room (e.g., finding specific items like a bottle, keys, etc.).
-        4. **Say "3"** if the question requires scanning a barcode to retrieve product details.
-        5. If the user's query can be answered using previous interactions, respond with the answer directly.
-        - You have access to two arrays: one containing the last 5 questions and the other containing the last 5 answers.
-        - If the user explicitly asks to use previous information or if the query matches past interactions, respond directly with the relevant answer without saying "4."
-
-        **Guidelines to follow:**
-        - **Use "0"** when the query involves reading or extracting specific text from an image (OCR).
-        - **Use "1"** when the query asks about general visual content or image-based analysis (VQA).
-        - **Use "2"** when the query involves locating an object in a room.
-        - **Use "3"** when the query involves scanning a barcode for product information.
-        - For matching questions in the previous data, return the stored answer directly.
-
-        Previous interactions:
-        - Last 5 questions: {history_questions}
-        - Last 5 answers: {history_answers}
 
         User query: "{prompt}"
 
@@ -124,5 +131,4 @@ class LLM:
         )
 
         val = chat_completion.choices[0].message.content
-        print("DECISION : ", val)
         return val
