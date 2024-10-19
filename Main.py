@@ -105,6 +105,9 @@ def ocr_funct(prompt, imghat):
 
 def function_model(image, text):
     ret = send_image_and_text(image, text)
+    ret = ret.split("Assistant")
+    ret = ret[1]
+    ret = ret[2 : len(ret) - 2]
     return ret
 
 
@@ -117,6 +120,9 @@ def bar_code(frame, text):
 
 
 def decision_gen(frame, text, lbl_output, history_questions, history_answers):
+    if not text:
+        text = "What do you see?"
+        prompt = text
     prompt = text
     val = str(llm.decision(text, history_questions, history_answers))
     print(val)

@@ -212,7 +212,7 @@ if __name__ == "__main__":
     assistant = ObjectDetectionAssistant(hf_api_key, groq_api_key)
 
     img_pth = "1.jpg"
-    user_query = "where is my laptop?"
+    user_query = "where are my books?"
 
     result = assistant.assist_user(img_pth, user_query)
     print(result)
