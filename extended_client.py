@@ -114,6 +114,9 @@ def decision_gen(frame, text, lbl_output, history_questions, history_answers):
         history_answers.pop(0)
         history_questions.append(ques)
         history_answers.append(val3)
+    elif val=="3":
+        print("Bar code Scanning")
+        
     elif len(val) > 2:
         print("History")
         history_questions.pop(0)
