@@ -13,6 +13,10 @@ from Prompts import LLM
 from dotenv import load_dotenv
 import numpy as np
 from Barcode import BarcodeProcessor
+import io
+import time
+from client_server_connector import send_image_and_text
+
 
 load_dotenv()
 llm = LLM()
@@ -99,8 +103,9 @@ def ocr_funct(prompt, imghat):
     return "Object not found."
 
 
-def function_model(image, text, lbl_output):
-    return "TESTING"
+def function_model(image, text):
+    ret = send_image_and_text(image, text)
+    return ret
 
 
 def bar_code(frame, text):
@@ -127,7 +132,12 @@ def decision_gen(frame, text, lbl_output, history_questions, history_answers):
         history_answers.append(val3)
     elif "1" in val:
         print("VQA")
-        val2 = function_model(frame, text, lbl_output)
+        pil_image = Image.fromarray(frame)
+        buffer = io.BytesIO()
+        pil_image.save(buffer, format="JPEG")
+        buffer.seek(0)
+        frame = Image.open(buffer)
+        val2 = function_model(frame, text)
         history_questions.pop(0)
         history_answers.pop(0)
         history_questions.append(ques)
